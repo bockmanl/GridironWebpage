@@ -5,6 +5,7 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci --omit=dev
 
+COPY routes ./routes
 COPY src ./src
 
 EXPOSE 3000
