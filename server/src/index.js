@@ -4,7 +4,7 @@ import pg from 'pg'
 const { Pool } = pg
 const app = express()
 const port = Number(process.env.PORT ?? 3000)
-const pool = new Pool()
+const pool = new Pool({ connectionTimeoutMillis: 5000 })
 
 app.get('/api/health', async (_request, response, next) => {
   try {
@@ -20,6 +20,20 @@ app.use((error, _request, response, _next) => {
   response.status(500).json({ error: 'Internal server error' })
 })
 
-app.listen(port, '0.0.0.0', () => {
-  console.log(`API listening on port ${port}`)
-})
+async function startServer() {
+  try {
+    await pool.query('SELECT 1')
+    console.log('Connected to PostgreSQL')
+  } catch (error) {
+    console.error('Failed to connect to PostgreSQL during startup:', error)
+    await pool.end()
+    process.exitCode = 1
+    return
+  }
+
+  app.listen(port, '0.0.0.0', () => {
+    console.log(`API listening on port ${port}`)
+  })
+}
+
+startServer()
