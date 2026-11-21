@@ -1,14 +1,7 @@
 import { Router } from 'express'
 
-const demoUserId = '00000000-0000-0000-0000-000000000001'
-const validWorkoutTypes = new Set([
-  'lifting',
-  'conditioning',
-  'mobility',
-  'practice',
-  'recovery',
-  'other',
-])
+const userId = '00000000-0000-0000-0000-000000000001'
+const workoutTypes = new Set(['lifting', 'mobility'])
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -26,10 +19,7 @@ function validateReadiness(body) {
   if (!Number.isInteger(body.fatigue_level) || body.fatigue_level < 1 || body.fatigue_level > 10) {
     return 'fatigue_level must be an integer from 1 to 10.'
   }
-  if (
-    !Array.isArray(body.sore_muscles) ||
-    !body.sore_muscles.every((muscle) => typeof muscle === 'string')
-  ) {
+  if (!Array.isArray(body.sore_muscles) || !body.sore_muscles.every((muscle) => typeof muscle === 'string')) {
     return 'sore_muscles must be an array of strings.'
   }
   if (typeof body.notes !== 'string') {
@@ -42,8 +32,8 @@ function validateWorkout(body) {
   if (!isObject(body)) {
     return 'Request body must be a JSON object.'
   }
-  if (typeof body.type !== 'string' || !validWorkoutTypes.has(body.type)) {
-    return 'type must be a supported workout type.'
+  if (typeof body.type !== 'string' || !workoutTypes.has(body.type)) {
+    return 'type must be Lifting or Mobility/Rehab.'
   }
   if (!Number.isInteger(body.duration_mins) || body.duration_mins < 1) {
     return 'duration_mins must be a positive integer.'
@@ -73,7 +63,7 @@ export default function createRecoveryRouter(pool) {
          VALUES ($1, $2, $3, $4, $5)
          RETURNING *`,
         [
-          demoUserId,
+          userId,
           request.body.sleep_quality,
           request.body.fatigue_level,
           request.body.sore_muscles,
@@ -99,7 +89,7 @@ export default function createRecoveryRouter(pool) {
          VALUES ($1, $2, $3, $4, $5)
          RETURNING *`,
         [
-          demoUserId,
+          userId,
           request.body.type,
           request.body.duration_mins,
           request.body.intensity,
@@ -117,11 +107,11 @@ export default function createRecoveryRouter(pool) {
       const [readinessResult, workoutsResult] = await Promise.all([
         pool.query(
           'SELECT * FROM readiness_logs WHERE user_id = $1 ORDER BY logged_at DESC, id DESC',
-          [demoUserId],
+          [userId],
         ),
         pool.query(
           'SELECT * FROM workouts WHERE user_id = $1 ORDER BY started_at DESC, id DESC',
-          [demoUserId],
+          [userId],
         ),
       ])
       return response.json({
@@ -139,8 +129,8 @@ export default function createRecoveryRouter(pool) {
       return response.status(400).json({ error: 'id must be a UUID.' })
     }
 
-    const isReadiness = type === 'readiness' || type === 'readiness_logs'
-    const isWorkout = type === 'workout' || type === 'workouts'
+    const isReadiness = type === 'readiness'
+    const isWorkout = type === 'workout'
     if (!isReadiness && !isWorkout) {
       return response.status(400).json({ error: 'type must be readiness or workout.' })
     }
@@ -165,7 +155,7 @@ export default function createRecoveryRouter(pool) {
               request.body.sore_muscles,
               request.body.notes,
               id,
-              demoUserId,
+              userId,
             ],
           )
         : await pool.query(
@@ -179,7 +169,7 @@ export default function createRecoveryRouter(pool) {
               request.body.intensity,
               request.body.notes,
               id,
-              demoUserId,
+              userId,
             ],
           )
 
