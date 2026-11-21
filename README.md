@@ -44,3 +44,18 @@ Football players currently juggle scattered spiral notebooks, generic fitness tr
    ```bash
    git clone [https://github.com/your-username/your-repo-name.git](https://github.com/your-username/your-repo-name.git)
    cd your-repo-name
+   ```
+
+2. **Start the local development stack:**
+   ```bash
+   docker compose up --build
+   ```
+
+   The React app is available at [http://localhost:5173](http://localhost:5173), the Express API at [http://localhost:3000](http://localhost:3000), and PostgreSQL on port `5432`. The API health check at `/api/health` also verifies its database connection. By default, the local database is `gridiron` with username and password `gridiron`; set `POSTGRES_DB`, `POSTGRES_USER`, or `POSTGRES_PASSWORD` in your environment to override these development defaults.
+
+3. **Stop the stack:**
+   ```bash
+   docker compose down
+   ```
+
+   PostgreSQL data is kept in a named volume. To remove it as well, run `docker compose down -v`.
