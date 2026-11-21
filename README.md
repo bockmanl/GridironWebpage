@@ -64,6 +64,10 @@ Football players currently juggle scattered spiral notebooks, generic fitness tr
 
    PostgreSQL automatically applies SQL files in `server/migrations` when initializing a new data volume. Existing volumes are preserved and do not rerun initialization scripts. Express starts only after PostgreSQL passes its health check.
 
+   Film notes are available at `POST` and `GET /api/film-notes`, `PUT /api/film-notes/:id`, and `DELETE /api/film-notes/:id`. The create/update JSON fields are `opponent`, `session_date` (`YYYY-MM-DD`), `session_type` (`Game` or `Practice`), `general_notes`, and `timestamps` (an array of `{ time, observation, correction }`). `GET` accepts optional `opponent` and `search` query parameters. These development routes use logical user ID `1`, mapped to the seeded UUID.
+
+   For an existing database volume, apply the film-note migration once with `docker compose exec -T db psql -U gridiron -d gridiron -v ON_ERROR_STOP=1 -f /docker-entrypoint-initdb.d/002_add_film_note_sessions.sql` (adjust the user and database for your `.env`).
+
 4. **Stop the stack:**
    ```bash
    docker compose down

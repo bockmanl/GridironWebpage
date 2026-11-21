@@ -20,6 +20,8 @@ app.get('/api/health', async (_request, response, next) => {
   }
 })
 
+app.use('/api/film-notes', createFilmRouter(pool))
+
 app.use((error, _request, response, _next) => {
   console.error(error)
   const status =
