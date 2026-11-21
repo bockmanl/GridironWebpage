@@ -13,6 +13,10 @@ const publicDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)
 
 app.use(express.json({ limit: '1mb' }))
 
+app.use(express.json())
+
+app.use('/api/film-notes', createFilmRouter(pool))
+
 app.get('/api/health', async (_request, response, next) => {
   try {
     await pool.query('SELECT 1')
