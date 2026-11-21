@@ -1,7 +1,7 @@
-import RecoveryTracker from './pages/RecoveryTracker.jsx'
+import FilmNotebook from './pages/FilmNotebook.jsx'
 
 function App() {
-  return <RecoveryTracker />
+  return <FilmNotebook />
 }
 
 export default App
