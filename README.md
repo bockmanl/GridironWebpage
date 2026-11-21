@@ -62,13 +62,9 @@ Football players currently juggle scattered spiral notebooks, generic fitness tr
 
    PostgreSQL automatically applies SQL files in `server/migrations` when initializing a new data volume. Existing volumes are preserved and do not rerun initialization scripts. Express starts only after PostgreSQL passes its health check.
 
-   Recovery endpoints are available under `/api`:
-   * `POST /readiness` accepts `sleep_quality` and `fatigue_level` (1-10), `sore_muscles` (string array), and `notes` (string).
-   * `POST /workouts` accepts `type`, `duration_mins`, `intensity` (1-10), and `notes`. Workout types are `lifting`, `conditioning`, `mobility`, `practice`, `recovery`, or `other`.
-   * `GET /logs` returns `readiness_logs` and `workouts`, newest first.
-   * `PUT /logs/readiness/:id` and `PUT /logs/workout/:id` update entries using the corresponding POST body.
+   Film notes are available at `POST` and `GET /api/film-notes`, `PUT /api/film-notes/:id`, and `DELETE /api/film-notes/:id`. The create/update JSON fields are `opponent`, `session_date` (`YYYY-MM-DD`), `session_type` (`Game` or `Practice`), `general_notes`, and `timestamps` (an array of `{ time, observation, correction }`). `GET` accepts optional `opponent` and `search` query parameters. These development routes use logical user ID `1`, mapped to the seeded UUID.
 
-   These development routes use logical user ID `1`, mapped to a seeded UUID because the database uses UUID primary keys. Invalid requests return `400`; database or server errors return `500`. For an existing database volume, apply the new recovery migration once with `docker compose exec -T db psql -U gridiron -d gridiron -v ON_ERROR_STOP=1 -f /docker-entrypoint-initdb.d/002_add_recovery_api_fields.sql` (adjust the user and database for your `.env`).
+   For an existing database volume, apply the film-note migration once with `docker compose exec -T db psql -U gridiron -d gridiron -v ON_ERROR_STOP=1 -f /docker-entrypoint-initdb.d/002_add_film_note_sessions.sql` (adjust the user and database for your `.env`).
 
 4. **Stop the stack:**
    ```bash

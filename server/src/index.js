@@ -1,6 +1,6 @@
 import express from 'express'
 import pg from 'pg'
-import createRecoveryRouter from '../routes/recovery.js'
+import createFilmRouter from '../routes/film.js'
 
 const { Pool } = pg
 const app = express()
@@ -18,14 +18,17 @@ app.get('/api/health', async (_request, response, next) => {
   }
 })
 
-app.use('/api', createRecoveryRouter(pool))
+app.use('/api/film-notes', createFilmRouter(pool))
 
 app.use((error, _request, response, _next) => {
-  if (Number.isInteger(error.status) && error.status >= 400 && error.status < 500) {
-    return response.status(400).json({ error: 'Invalid JSON request body.' })
+  const status =
+    Number.isInteger(error.status) && error.status >= 400 && error.status < 500 ? 400 : 500
+  if (status === 500) {
+    console.error(error)
   }
-  console.error(error)
-  return response.status(500).json({ error: 'Internal server error' })
+  response.status(status).json({
+    error: status === 400 ? 'Invalid request body.' : 'Internal server error',
+  })
 })
 
 async function startServer() {
