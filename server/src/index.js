@@ -1,5 +1,7 @@
 import express from 'express'
 import pg from 'pg'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import filmRouter from '../routes/film.js'
 import recoveryRouter from '../routes/recovery.js'
 
@@ -7,6 +9,7 @@ const { Pool } = pg
 const app = express()
 const port = Number(process.env.PORT ?? 3000)
 const pool = new Pool({ connectionTimeoutMillis: 5000 })
+const publicDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../public')
 
 app.use(express.json({ limit: '1mb' }))
 
@@ -21,6 +24,13 @@ app.get('/api/health', async (_request, response, next) => {
 
 app.use('/api', recoveryRouter)
 app.use('/api/film-notes', filmRouter)
+
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(publicDirectory, { index: false }))
+  app.get(/^\/(?!api(?:\/|$)).*/, (_request, response) => {
+    response.sendFile(path.join(publicDirectory, 'index.html'))
+  })
+}
 
 async function startServer() {
   try {

@@ -98,3 +98,68 @@ All endpoints are under `/api`. The local MVP uses the seeded demo athlete (`use
 | `GET` | `/api/film-notes` | List film notes; accepts optional `opponent` and `search` query parameters. |
 | `PUT` | `/api/film-notes/:id` | Update a film note and its timestamped plays. |
 | `DELETE` | `/api/film-notes/:id` | Delete a film note. |
+
+## Google Cloud deployment (Cloud Run + Cloud SQL)
+
+The cloud image serves the React build and Express API from one Cloud Run service. PostgreSQL runs in Cloud SQL, with the password supplied from Secret Manager. The Cloud Run service is private by default: this MVP has no sign-in and assumes one demo athlete, so do not make it public with real athlete data.
+
+### One-time Google Cloud setup
+
+1. Install and authenticate the Google Cloud CLI, select a billable project, and choose a region:
+
+   ```sh
+   gcloud auth login
+   gcloud config set project YOUR_PROJECT_ID
+   gcloud config set run/region us-central1
+   ```
+
+2. Enable the required services and create an Artifact Registry repository:
+
+   ```sh
+   gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com sqladmin.googleapis.com secretmanager.googleapis.com
+   gcloud artifacts repositories create gridironpulse --repository-format=docker --location=us-central1
+   ```
+
+3. In Cloud SQL, create a PostgreSQL instance, a database named `gridiron`, and a database user named `gridiron`. Keep the instance connection name (`PROJECT_ID:REGION:INSTANCE`) and the database user's password. Store that password as a Secret Manager secret named `gridiron-db-password`; do not put it in this repository or in build substitutions.
+
+4. Create a runtime service account and grant it access to Cloud SQL and the database password secret:
+
+   ```sh
+   gcloud iam service-accounts create gridironpulse-runtime
+   gcloud projects add-iam-policy-binding YOUR_PROJECT_ID --member="serviceAccount:gridironpulse-runtime@YOUR_PROJECT_ID.iam.gserviceaccount.com" --role=roles/cloudsql.client
+   gcloud secrets add-iam-policy-binding gridiron-db-password --member="serviceAccount:gridironpulse-runtime@YOUR_PROJECT_ID.iam.gserviceaccount.com" --role=roles/secretmanager.secretAccessor
+   ```
+
+   The identity running Cloud Build also needs permission to push to the Artifact Registry repository, deploy Cloud Run services, and act as this runtime service account.
+
+5. Apply the database migrations once to the Cloud SQL database. One option is to run the Cloud SQL Auth Proxy locally for your instance, then run `psql` against its local port:
+
+   ```sh
+   cloud-sql-proxy --port 5433 YOUR_PROJECT_ID:us-central1:YOUR_INSTANCE
+   ```
+
+   In another terminal, with `psql` installed:
+
+   ```sh
+   psql "host=127.0.0.1 port=5433 dbname=gridiron user=gridiron sslmode=disable" -f server/migrations/001_create_core_tables.sql
+   psql "host=127.0.0.1 port=5433 dbname=gridiron user=gridiron sslmode=disable" -f server/migrations/002_unit12_mvp.sql
+   ```
+
+   Enter the database user's password when prompted. If the schema already exists, apply only migrations that have not yet been applied.
+
+### Build and deploy
+
+Run this from the repository root, replacing the project, instance, and account values:
+
+```sh
+gcloud builds submit --config cloudbuild.yaml --substitutions="_REGION=us-central1,_REPOSITORY=gridironpulse,_SERVICE=gridironpulse,_INSTANCE_CONNECTION_NAME=YOUR_PROJECT_ID:us-central1:YOUR_INSTANCE,_DATABASE=gridiron,_DB_USER=gridiron,_DB_PASSWORD_SECRET=gridiron-db-password,_RUNTIME_SERVICE_ACCOUNT=gridironpulse-runtime@YOUR_PROJECT_ID.iam.gserviceaccount.com" .
+```
+
+The build produces a single container from `Dockerfile.cloud`, deploys it to Cloud Run, attaches the Cloud SQL socket, and injects `PGPASSWORD` from Secret Manager. Open the service privately through an authenticated local proxy:
+
+```sh
+gcloud run services add-iam-policy-binding gridironpulse --region us-central1 --member="user:YOUR_GOOGLE_ACCOUNT_EMAIL" --role=roles/run.invoker
+gcloud run services proxy gridironpulse --region us-central1 --port 8080
+```
+
+Then visit [http://localhost:8080](http://localhost:8080). Keep the service private until authentication and per-athlete data isolation are implemented.
