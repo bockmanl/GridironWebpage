@@ -1,5 +1,3 @@
-BEGIN;
-
 ALTER TABLE readiness_logs
     ADD COLUMN IF NOT EXISTS sore_muscles TEXT[] NOT NULL DEFAULT '{}';
 
@@ -63,6 +61,4 @@ VALUES (
     'local-development-only',
     'Local Demo Athlete'
 )
-ON CONFLICT (id) DO NOTHING;
-
-COMMIT;
+ON CONFLICT DO NOTHING;

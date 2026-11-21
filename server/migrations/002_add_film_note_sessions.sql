@@ -1,5 +1,3 @@
-BEGIN;
-
 ALTER TABLE film_notes
     ADD COLUMN IF NOT EXISTS opponent TEXT,
     ADD COLUMN IF NOT EXISTS session_date DATE,
@@ -44,5 +42,3 @@ ON CONFLICT DO NOTHING;
 
 CREATE INDEX IF NOT EXISTS film_notes_user_session_date_idx
     ON film_notes (user_id, session_date DESC);
-
-COMMIT;

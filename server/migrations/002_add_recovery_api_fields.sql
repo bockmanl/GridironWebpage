@@ -1,5 +1,3 @@
-BEGIN;
-
 ALTER TABLE readiness_logs
     ADD COLUMN IF NOT EXISTS sore_muscles TEXT[] NOT NULL DEFAULT '{}';
 
@@ -18,5 +16,3 @@ VALUES (
     'Local Demo User'
 )
 ON CONFLICT DO NOTHING;
-
-COMMIT;

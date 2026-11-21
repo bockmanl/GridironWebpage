@@ -65,7 +65,7 @@ Players and coaches often split preparation across paper notebooks, spreadsheets
    - Express API health: [http://localhost:3000/api/health](http://localhost:3000/api/health)
    - PostgreSQL: `localhost:5432`
 
-   The expected health response is `{"status":"ok","database":"connected"}`. On a new PostgreSQL data volume, SQL migrations in `server/migrations` run automatically during database initialization.
+   The expected health response is `{"status":"ok","database":"connected"}`. PostgreSQL runs the migration scripts on a new data volume, and Express tracks/applies any unrecorded migrations in sorted order before it starts accepting traffic. This also handles an existing volume and Cloud SQL.
 
 5. Stop the services with `Ctrl+C`, or run:
 
@@ -74,14 +74,6 @@ Players and coaches often split preparation across paper notebooks, spreadsheets
    ```
 
 PostgreSQL data remains in the `postgres_data` named volume. To remove the database and all its data, use `docker compose down -v` only when you intend to reset the local database.
-
-### Existing database volume
-
-PostgreSQL only runs its initialization scripts when creating a new data directory. If reusing a volume created before the Unit 12 MVP migration, apply the new migration once from PowerShell:
-
-```powershell
-Get-Content .\server\migrations\002_unit12_mvp.sql | docker compose exec -T db psql -U gridiron -d gridiron
-```
 
 ## Current API
 
@@ -120,7 +112,7 @@ The cloud image serves the React build and Express API from one Cloud Run servic
    gcloud artifacts repositories create gridironpulse --repository-format=docker --location=us-central1
    ```
 
-3. In Cloud SQL, create a PostgreSQL instance, a database named `gridiron`, and a database user named `gridiron`. Keep the instance connection name (`PROJECT_ID:REGION:INSTANCE`) and the database user's password. Store that password as a Secret Manager secret named `gridiron-db-password`; do not put it in this repository or in build substitutions.
+3. In Cloud SQL, create a PostgreSQL instance, a database named `gridiron`, and a database user named `gridiron`. Ensure this user can create tables in the `public` schema; the app applies migrations during startup. Keep the instance connection name (`PROJECT_ID:REGION:INSTANCE`) and the database user's password. Store that password as a Secret Manager secret named `gridiron-db-password`; do not put it in this repository or in build substitutions.
 
 4. Create a runtime service account and grant it access to Cloud SQL and the database password secret:
 
@@ -132,20 +124,7 @@ The cloud image serves the React build and Express API from one Cloud Run servic
 
    The identity running Cloud Build also needs permission to push to the Artifact Registry repository, deploy Cloud Run services, and act as this runtime service account.
 
-5. Apply the database migrations once to the Cloud SQL database. One option is to run the Cloud SQL Auth Proxy locally for your instance, then run `psql` against its local port:
-
-   ```sh
-   cloud-sql-proxy --port 5433 YOUR_PROJECT_ID:us-central1:YOUR_INSTANCE
-   ```
-
-   In another terminal, with `psql` installed:
-
-   ```sh
-   psql "host=127.0.0.1 port=5433 dbname=gridiron user=gridiron sslmode=disable" -f server/migrations/001_create_core_tables.sql
-   psql "host=127.0.0.1 port=5433 dbname=gridiron user=gridiron sslmode=disable" -f server/migrations/002_unit12_mvp.sql
-   ```
-
-   Enter the database user's password when prompted. If the schema already exists, apply only migrations that have not yet been applied.
+5. The server image includes `server/migrations`. On startup, it applies each unrecorded SQL file in sorted order and records it in `schema_migrations`; no manual migration command is required.
 
 ### Build and deploy
 

@@ -1,8 +1,5 @@
 import { Router } from 'express'
-import pg from 'pg'
-
-const { Pool } = pg
-const pool = new Pool()
+import pool from '../src/db/pool.js'
 const router = Router()
 const userId = '00000000-0000-0000-0000-000000000001'
 

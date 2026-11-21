@@ -1,21 +1,16 @@
 import express from 'express'
-import pg from 'pg'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import filmRouter from '../routes/film.js'
 import recoveryRouter from '../routes/recovery.js'
+import { runMigrations } from './db/migrate.js'
+import pool from './db/pool.js'
 
-const { Pool } = pg
 const app = express()
 const port = Number(process.env.PORT ?? 3000)
-const pool = new Pool({ connectionTimeoutMillis: 5000 })
 const publicDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../public')
 
 app.use(express.json({ limit: '1mb' }))
-
-app.use(express.json())
-
-app.use('/api/film-notes', createFilmRouter(pool))
 
 app.get('/api/health', async (_request, response, next) => {
   try {
@@ -38,10 +33,11 @@ if (process.env.NODE_ENV === 'production') {
 
 async function startServer() {
   try {
+    await runMigrations()
     await pool.query('SELECT 1')
-    console.log('Connected to PostgreSQL')
+    console.log('Database schema is ready')
   } catch (error) {
-    console.error('Failed to connect to PostgreSQL during startup:', error)
+    console.error('Failed to prepare PostgreSQL during startup:', error)
     await pool.end()
     process.exitCode = 1
     return

@@ -1,6 +1,4 @@
-BEGIN;
-
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email TEXT NOT NULL,
     password_hash TEXT NOT NULL,
@@ -10,9 +8,9 @@ CREATE TABLE users (
     CONSTRAINT users_full_name_not_blank CHECK (length(trim(full_name)) > 0)
 );
 
-CREATE UNIQUE INDEX users_email_lower_unique ON users (lower(email));
+CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower_unique ON users (lower(email));
 
-CREATE TABLE readiness_logs (
+CREATE TABLE IF NOT EXISTS readiness_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
     logged_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -24,10 +22,10 @@ CREATE TABLE readiness_logs (
     notes TEXT
 );
 
-CREATE INDEX readiness_logs_user_logged_at_idx
+CREATE INDEX IF NOT EXISTS readiness_logs_user_logged_at_idx
     ON readiness_logs (user_id, logged_at DESC);
 
-CREATE TABLE workouts (
+CREATE TABLE IF NOT EXISTS workouts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
     workout_type TEXT NOT NULL
@@ -39,10 +37,10 @@ CREATE TABLE workouts (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX workouts_user_started_at_idx
+CREATE INDEX IF NOT EXISTS workouts_user_started_at_idx
     ON workouts (user_id, started_at DESC);
 
-CREATE TABLE film_notes (
+CREATE TABLE IF NOT EXISTS film_notes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
     opponent_name TEXT NOT NULL CHECK (length(trim(opponent_name)) > 0),
@@ -59,7 +57,5 @@ CREATE TABLE film_notes (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX film_notes_user_opponent_created_at_idx
+CREATE INDEX IF NOT EXISTS film_notes_user_opponent_created_at_idx
     ON film_notes (user_id, opponent_name, created_at DESC);
-
-COMMIT;
