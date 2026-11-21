@@ -1,70 +1,100 @@
-# Gridiron
+# GridironPulse
 
-**GridironSync** is a centralized recovery tracking and film study platform built for high school, college, and semi-pro football players. By unifying physical readiness logs with structured opponent film notes, it helps athletes and trainers spot how daily training loads impact on-field performance.
+GridironPulse is a unified football recovery and film study tracker. It gives student-athletes one place to record daily readiness and soreness, log workouts and mobility sessions, and organize opponent film notes with play-by-play timestamps.
 
----
+## Why it matters
 
-## Why This Matters
+Players and coaches often split preparation across paper notebooks, spreadsheets, and separate tracking tools. That fragmentation makes it harder to keep training and film observations together. GridironPulse brings those records into one simple, searchable workflow so athletes can review their recovery and football study history side by side.
 
-Football players currently juggle scattered spiral notebooks, generic fitness trackers, and separate video platforms to manage their preparation. Separating physical recovery from mental prep makes it difficult to recognize overtraining early or keep opponent scouting organized. This application consolidates both workflows into a single, athlete-focused hub—backed by AI insights that turn raw daily logs into actionable recovery routines and concise play summaries.
+## MVP features
 
----
+- Daily readiness check-ins for sleep quality, fatigue, sore muscles, and notes.
+- Workout and mobility/rehab logging with duration and intensity.
+- Recent recovery and workout history with inline editing.
+- Film notes by opponent, date, and session type, with searchable notes and timestamped observations and coaching corrections.
 
-## Key Features
+## Technology stack
 
-* **Daily Readiness & Soreness Log:** Quick check-ins to record sleep quality, muscle soreness, fatigue levels, and overall physical readiness.
-* **Structured Film Study & Play Notebook:** Organized workspace to log opponent tendencies, defensive/offensive schemes, and timestamped play notes.
-* **Recovery Trend Dashboard:** Interactive visualizations tracking soreness, workload, and readiness scores over weeks and seasons.
-* **Workout & Mobility Logger:** Dedicated tracking for lifting sessions, conditioning workloads, and targeted mobility work.
-* **AI Recovery & Film Assistant:** Analyzes soreness and workout trends to recommend personalized mobility routines, while automatically summarizing and tagging raw film study notes.
+- **Frontend:** React and TypeScript, served by Vite.
+- **API:** Node.js and Express.
+- **Database:** PostgreSQL.
+- **Local development:** Docker Compose.
+- **Cloud hosting direction:** Google Cloud (container hosting and managed PostgreSQL are the intended deployment approach). The repository currently configures local Docker Compose; Google Cloud resources are not provisioned here.
 
----
-
-## Technology Stack
-
-* **Frontend:** React
-* **Backend:** Node.js, Express (REST API)
-* **Database:** PostgreSQL
-* **AI Integration:** LLM API Integration (Recovery analysis & automated note summarization)
-* **DevOps & Deployment:** Docker, Docker Compose, GitHub Actions (CI/CD), Google Cloud
-
----
-
-## Getting Started
+## Run locally
 
 ### Prerequisites
 
-* [Node.js](https://nodejs.org/) (v18+ recommended)
-* [Docker](https://www.docker.com/) and Docker Compose
-* A valid API key for the AI assistant integration
+- Docker Desktop with Docker Compose, or Docker Engine with the Compose plugin.
+- Git.
 
-### Local Setup
+### Setup
 
-1. **Clone the repository:**
-   ```bash
-   git clone [https://github.com/your-username/your-repo-name.git](https://github.com/your-username/your-repo-name.git)
-   cd your-repo-name
+1. Clone the repository and enter its folder:
+
+   ```sh
+   git clone https://github.com/bockmanl/GridironWebpage.git
+   cd GridironWebpage
    ```
 
-2. **Configure local environment variables:**
-   ```bash
+2. Create the local environment file. On PowerShell:
+
+   ```powershell
+   Copy-Item .env.example .env
+   ```
+
+   On macOS/Linux:
+
+   ```sh
    cp .env.example .env
    ```
 
-   Edit `.env` to set the PostgreSQL database name, user, and password. This file is ignored by Git; `.env.example` contains local development defaults.
+   The example contains development-only PostgreSQL defaults. Change them in `.env` if needed; do not use these defaults for a shared or production environment.
 
-3. **Start the local development stack:**
-   ```bash
+3. Build and start the services:
+
+   ```sh
    docker compose up --build
    ```
 
-   The React app is available at [http://localhost:5173](http://localhost:5173), the Express API at [http://localhost:3000](http://localhost:3000), and PostgreSQL on port `5432`. Express checks its database connection before listening; `/api/health` also verifies the connection.
+   The equivalent legacy command is `docker-compose up --build`. Wait for the database and API health checks to pass.
 
-   PostgreSQL automatically applies SQL files in `server/migrations` when initializing a new data volume. Existing volumes are preserved and do not rerun initialization scripts. Express starts only after PostgreSQL passes its health check.
+4. Open the app and check the API:
 
-4. **Stop the stack:**
-   ```bash
+   - React client: [http://localhost:5173](http://localhost:5173)
+   - Express API health: [http://localhost:3000/api/health](http://localhost:3000/api/health)
+   - PostgreSQL: `localhost:5432`
+
+   The expected health response is `{"status":"ok","database":"connected"}`. On a new PostgreSQL data volume, SQL migrations in `server/migrations` run automatically during database initialization.
+
+5. Stop the services with `Ctrl+C`, or run:
+
+   ```sh
    docker compose down
    ```
 
-   PostgreSQL data is kept in a named volume. To remove it as well, run `docker compose down -v`.
+PostgreSQL data remains in the `postgres_data` named volume. To remove the database and all its data, use `docker compose down -v` only when you intend to reset the local database.
+
+### Existing database volume
+
+PostgreSQL only runs its initialization scripts when creating a new data directory. If reusing a volume created before the Unit 12 MVP migration, apply the new migration once from PowerShell:
+
+```powershell
+Get-Content .\server\migrations\002_unit12_mvp.sql | docker compose exec -T db psql -U gridiron -d gridiron
+```
+
+## Current API
+
+All endpoints are under `/api`. The local MVP uses the seeded demo athlete (`user_id` `00000000-0000-0000-0000-000000000001`); authentication is not part of this local setup.
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/health` | API and PostgreSQL health check. |
+| `POST` | `/api/readiness` | Create a readiness check-in. Body: `sleep_quality` (1-10), `fatigue_level` (1-10), `sore_muscles` (array of muscle-area names), and `notes`. |
+| `POST` | `/api/workouts` | Create a workout. Body: `type` (`Lifting` or `Mobility/Rehab`), `duration_mins`, `intensity` (1-10), and `notes`. |
+| `GET` | `/api/logs` | Readiness and workout history, each ordered newest first. |
+| `PUT` | `/api/logs/:type/:id` | Update a log; `:type` is `readiness` or `workout`. |
+| `POST` | `/api/film-notes` | Create a film note with opponent, session date/type, general notes, and timestamped plays. |
+| `GET` | `/api/film-notes` | List film notes; accepts optional `opponent` and `search` query parameters. |
+| `PUT` | `/api/film-notes/:id` | Update a film note and its timestamped plays. |
+| `DELETE` | `/api/film-notes/:id` | Delete a film note. |
