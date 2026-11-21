@@ -1,177 +1,128 @@
 import { Router } from 'express'
+import pg from 'pg'
 
+const { Pool } = pg
+const pool = new Pool()
+const router = Router()
 const userId = '00000000-0000-0000-0000-000000000001'
-const sessionTypes = new Set(['Game', 'Practice'])
-const uuidPattern =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-function isObject(value) {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-}
-
-function isValidDate(value) {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return false
-  }
-  const date = new Date(`${value}T00:00:00.000Z`)
-  return !Number.isNaN(date.valueOf()) && date.toISOString().slice(0, 10) === value
-}
-
-function isValidTimestamp(value) {
+function validNote(body) {
   return (
-    isObject(value) &&
-    typeof value.time === 'string' &&
-    value.time.trim().length > 0 &&
-    typeof value.observation === 'string' &&
-    typeof value.correction === 'string'
+    body !== null &&
+    typeof body === 'object' &&
+    !Array.isArray(body) &&
+    typeof body.opponent === 'string' &&
+    body.opponent.trim().length > 0 &&
+    typeof body.session_date === 'string' &&
+    /^\d{4}-\d{2}-\d{2}$/.test(body.session_date) &&
+    !Number.isNaN(Date.parse(`${body.session_date}T00:00:00Z`)) &&
+    ['Game', 'Practice'].includes(body.session_type) &&
+    typeof body.general_notes === 'string' &&
+    Array.isArray(body.timestamps) &&
+    body.timestamps.every(
+      (play) =>
+        play &&
+        typeof play.time === 'string' &&
+        typeof play.observation === 'string' &&
+        typeof play.correction === 'string',
+    )
   )
 }
 
-function validateFilmNote(body) {
-  if (!isObject(body)) {
-    return 'Request body must be a JSON object.'
-  }
-  if (typeof body.opponent !== 'string' || body.opponent.trim().length === 0) {
-    return 'opponent must be a non-empty string.'
-  }
-  if (!isValidDate(body.session_date)) {
-    return 'session_date must be a valid YYYY-MM-DD date.'
-  }
-  if (!sessionTypes.has(body.session_type)) {
-    return 'session_type must be Game or Practice.'
-  }
-  if (typeof body.general_notes !== 'string') {
-    return 'general_notes must be a string.'
-  }
-  if (!Array.isArray(body.timestamps) || !body.timestamps.every(isValidTimestamp)) {
-    return 'timestamps must contain time, observation, and correction strings.'
-  }
-  return null
-}
-
-function selectFilmNote() {
-  return `id, user_id, opponent, session_date, session_type,
-          general_notes, timestamps, created_at`
-}
-
-function insertValues(body) {
+function noteValues(body) {
+  const opponent = body.opponent.trim()
+  const generalNotes = body.general_notes.trim()
   return [
     userId,
-    body.opponent.trim(),
+    opponent,
+    `${body.session_type}: ${opponent}`,
     body.session_date,
+    generalNotes,
     body.session_type,
-    body.general_notes,
+    generalNotes,
     JSON.stringify(body.timestamps),
   ]
 }
 
-export default function createFilmRouter(pool) {
-  const router = Router()
+const noteColumns = `id, opponent, session_date, session_type, general_notes, timestamps, created_at`
+const insertNote = `INSERT INTO film_notes
+  (user_id, opponent_name, title, game_date, side, notes, opponent, session_date, session_type, general_notes, timestamps)
+  VALUES ($1, $2, $3, $4, 'offense', $5, $2, $4, $6, $7, $8)`
 
-  router.post('/', async (request, response, next) => {
-    const validationError = validateFilmNote(request.body)
-    if (validationError) {
-      return response.status(400).json({ error: validationError })
-    }
+router.post('/', async (request, response, next) => {
+  if (!validNote(request.body)) {
+    return response.status(400).json({ error: 'Film note fields are invalid.' })
+  }
+  try {
+    const values = noteValues(request.body)
+    const { rows } = await pool.query(
+      `${insertNote} RETURNING ${noteColumns}`,
+      values,
+    )
+    return response.status(201).json(rows[0])
+  } catch (error) {
+    return next(error)
+  }
+})
 
-    try {
-      const { rows } = await pool.query(
-        `INSERT INTO film_notes
-          (user_id, opponent, session_date, session_type, general_notes, timestamps,
-           opponent_name, title, game_date, notes)
-         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $2, $2 || ' - ' || $4, $3, $5)
-         RETURNING ${selectFilmNote()}`,
-        insertValues(request.body),
-      )
-      return response.status(201).json(rows[0])
-    } catch (error) {
-      return next(error)
-    }
-  })
+router.get('/', async (request, response, next) => {
+  const opponent = typeof request.query.opponent === 'string' ? request.query.opponent.trim() : ''
+  const search = typeof request.query.search === 'string' ? request.query.search.trim() : ''
+  try {
+    const { rows } = await pool.query(
+      `SELECT ${noteColumns}
+       FROM film_notes
+       WHERE user_id = $1
+         AND ($2 = '' OR opponent ILIKE '%' || $2 || '%')
+         AND ($3 = '' OR opponent ILIKE '%' || $3 || '%' OR general_notes ILIKE '%' || $3 || '%')
+       ORDER BY session_date DESC, created_at DESC`,
+      [userId, opponent, search],
+    )
+    return response.json(rows)
+  } catch (error) {
+    return next(error)
+  }
+})
 
-  router.get('/', async (request, response, next) => {
-    const { opponent, search } = request.query
-    if (
-      (opponent !== undefined && typeof opponent !== 'string') ||
-      (search !== undefined && typeof search !== 'string')
-    ) {
-      return response.status(400).json({ error: 'opponent and search must be strings.' })
-    }
+router.put('/:id', async (request, response, next) => {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(request.params.id)) {
+    return response.status(400).json({ error: 'A valid film note ID is required.' })
+  }
+  if (!validNote(request.body)) {
+    return response.status(400).json({ error: 'Film note fields are invalid.' })
+  }
+  try {
+    const values = noteValues(request.body)
+    const { rows } = await pool.query(
+      `UPDATE film_notes
+       SET opponent_name = $2, title = $3, game_date = $4, notes = $5,
+           opponent = $2, session_date = $4, session_type = $6,
+           general_notes = $7, timestamps = $8
+       WHERE id = $9 AND user_id = $1
+       RETURNING ${noteColumns}`,
+      [...values, request.params.id],
+    )
+    if (!rows.length) return response.status(404).json({ error: 'Film note not found.' })
+    return response.json(rows[0])
+  } catch (error) {
+    return next(error)
+  }
+})
 
-    const values = [userId]
-    const filters = ['user_id = $1']
-    if (opponent?.trim()) {
-      values.push(`%${opponent.trim()}%`)
-      filters.push(`opponent ILIKE $${values.length}`)
-    }
-    if (search?.trim()) {
-      values.push(`%${search.trim()}%`)
-      filters.push(`(opponent ILIKE $${values.length} OR general_notes ILIKE $${values.length})`)
-    }
+router.delete('/:id', async (request, response, next) => {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(request.params.id)) {
+    return response.status(400).json({ error: 'A valid film note ID is required.' })
+  }
+  try {
+    const { rowCount } = await pool.query(
+      'DELETE FROM film_notes WHERE id = $1 AND user_id = $2',
+      [request.params.id, userId],
+    )
+    if (!rowCount) return response.status(404).json({ error: 'Film note not found.' })
+    return response.json({ deleted: true })
+  } catch (error) {
+    return next(error)
+  }
+})
 
-    try {
-      const { rows } = await pool.query(
-        `SELECT ${selectFilmNote()}
-         FROM film_notes
-         WHERE ${filters.join(' AND ')}
-         ORDER BY session_date DESC, created_at DESC, id DESC`,
-        values,
-      )
-      return response.json(rows)
-    } catch (error) {
-      return next(error)
-    }
-  })
-
-  router.put('/:id', async (request, response, next) => {
-    const { id } = request.params
-    if (!uuidPattern.test(id)) {
-      return response.status(400).json({ error: 'id must be a UUID.' })
-    }
-
-    const validationError = validateFilmNote(request.body)
-    if (validationError) {
-      return response.status(400).json({ error: validationError })
-    }
-
-    try {
-      const { rows } = await pool.query(
-        `UPDATE film_notes
-         SET opponent = $2, session_date = $3, session_type = $4, general_notes = $5,
-             timestamps = $6::jsonb, opponent_name = $2, title = $2 || ' - ' || $4,
-             game_date = $3, notes = $5
-         WHERE user_id = $1 AND id = $7
-         RETURNING ${selectFilmNote()}`,
-        [...insertValues(request.body), id],
-      )
-      if (rows.length === 0) {
-        return response.status(404).json({ error: 'Film note not found.' })
-      }
-      return response.json(rows[0])
-    } catch (error) {
-      return next(error)
-    }
-  })
-
-  router.delete('/:id', async (request, response, next) => {
-    const { id } = request.params
-    if (!uuidPattern.test(id)) {
-      return response.status(400).json({ error: 'id must be a UUID.' })
-    }
-
-    try {
-      const result = await pool.query('DELETE FROM film_notes WHERE user_id = $1 AND id = $2', [
-        userId,
-        id,
-      ])
-      if (result.rowCount === 0) {
-        return response.status(404).json({ error: 'Film note not found.' })
-      }
-      return response.status(204).end()
-    } catch (error) {
-      return next(error)
-    }
-  })
-
-  return router
-}
+export default router

@@ -1,0 +1,44 @@
+substitutions:
+  _REGION: us-central1
+  _REPOSITORY: gridironpulse
+  _SERVICE: gridironpulse
+  _INSTANCE_CONNECTION_NAME: REPLACE_WITH_PROJECT:REGION:INSTANCE
+  _DATABASE: gridiron
+  _DB_USER: gridiron
+  _DB_PASSWORD_SECRET: gridiron-db-password
+  _RUNTIME_SERVICE_ACCOUNT: REPLACE_WITH_SERVICE_ACCOUNT_EMAIL
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - Dockerfile.cloud
+      - -t
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}:$BUILD_ID
+      - .
+
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}:$BUILD_ID
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE}
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_SERVICE}:$BUILD_ID
+      - --region=${_REGION}
+      - --platform=managed
+      - --no-allow-unauthenticated
+      - --add-cloudsql-instances=${_INSTANCE_CONNECTION_NAME}
+      - --service-account=${_RUNTIME_SERVICE_ACCOUNT}
+      - --port=8080
+      - --min=0
+      - --max=2
+      - --memory=512Mi
+      - --set-env-vars=NODE_ENV=production,PGHOST=/cloudsql/${_INSTANCE_CONNECTION_NAME},PGPORT=5432,PGDATABASE=${_DATABASE},PGUSER=${_DB_USER}
+      - --set-secrets=PGPASSWORD=${_DB_PASSWORD_SECRET}:latest
+

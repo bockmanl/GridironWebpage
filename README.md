@@ -1,76 +1,165 @@
-# Gridiron
+# GridironPulse
 
-**GridironSync** is a centralized recovery tracking and film study platform built for high school, college, and semi-pro football players. By unifying physical readiness logs with structured opponent film notes, it helps athletes and trainers spot how daily training loads impact on-field performance.
+GridironPulse is a unified football recovery and film study tracker. It gives student-athletes one place to record daily readiness and soreness, log workouts and mobility sessions, and organize opponent film notes with play-by-play timestamps.
 
----
+## Why it matters
 
-## Why This Matters
+Players and coaches often split preparation across paper notebooks, spreadsheets, and separate tracking tools. That fragmentation makes it harder to keep training and film observations together. GridironPulse brings those records into one simple, searchable workflow so athletes can review their recovery and football study history side by side.
 
-Football players currently juggle scattered spiral notebooks, generic fitness trackers, and separate video platforms to manage their preparation. Separating physical recovery from mental prep makes it difficult to recognize overtraining early or keep opponent scouting organized. This application consolidates both workflows into a single, athlete-focused hub—backed by AI insights that turn raw daily logs into actionable recovery routines and concise play summaries.
+## MVP features
 
----
+- Daily readiness check-ins for sleep quality, fatigue, sore muscles, and notes.
+- Workout and mobility/rehab logging with duration and intensity.
+- Recent recovery and workout history with inline editing.
+- Film notes by opponent, date, and session type, with searchable notes and timestamped observations and coaching corrections.
 
-## Key Features
+## Technology stack
 
-* **Daily Readiness & Soreness Log:** Quick check-ins to record sleep quality, muscle soreness, fatigue levels, and overall physical readiness.
-* **Structured Film Study & Play Notebook:** Organized workspace to log opponent tendencies, defensive/offensive schemes, and timestamped play notes.
-* **Recovery Trend Dashboard:** Interactive visualizations tracking soreness, workload, and readiness scores over weeks and seasons.
-* **Workout & Mobility Logger:** Dedicated tracking for lifting sessions, conditioning workloads, and targeted mobility work.
-* **AI Recovery & Film Assistant:** Analyzes soreness and workout trends to recommend personalized mobility routines, while automatically summarizing and tagging raw film study notes.
+- **Frontend:** React and TypeScript, served by Vite.
+- **API:** Node.js and Express.
+- **Database:** PostgreSQL.
+- **Local development:** Docker Compose.
+- **Cloud hosting direction:** Google Cloud (container hosting and managed PostgreSQL are the intended deployment approach). The repository currently configures local Docker Compose; Google Cloud resources are not provisioned here.
 
----
-
-## Technology Stack
-
-* **Frontend:** React
-* **Backend:** Node.js, Express (REST API)
-* **Database:** PostgreSQL
-* **AI Integration:** LLM API Integration (Recovery analysis & automated note summarization)
-* **DevOps & Deployment:** Docker, Docker Compose, GitHub Actions (CI/CD), Google Cloud
-
----
-
-## Getting Started
+## Run locally
 
 ### Prerequisites
 
-* [Node.js](https://nodejs.org/) (v18+ recommended)
-* [Docker](https://www.docker.com/) and Docker Compose
-* A valid API key for the AI assistant integration
+- Docker Desktop with Docker Compose, or Docker Engine with the Compose plugin.
+- Git.
 
-### Local Setup
+### Setup
 
-1. **Clone the repository:**
-   ```bash
-   git clone [https://github.com/your-username/your-repo-name.git](https://github.com/your-username/your-repo-name.git)
-   cd your-repo-name
+1. Clone the repository and enter its folder:
+
+   ```sh
+   git clone https://github.com/bockmanl/GridironWebpage.git
+   cd GridironWebpage
    ```
 
-2. **Configure local environment variables:**
-   ```bash
+2. Create the local environment file. On PowerShell:
+
+   ```powershell
+   Copy-Item .env.example .env
+   ```
+
+   On macOS/Linux:
+
+   ```sh
    cp .env.example .env
    ```
 
-   Edit `.env` to set the PostgreSQL database name, user, and password. This file is ignored by Git; `.env.example` contains local development defaults.
+   The example contains development-only PostgreSQL defaults. Change them in `.env` if needed; do not use these defaults for a shared or production environment.
 
-3. **Start the local development stack:**
-   ```bash
+3. Build and start the services:
+
+   ```sh
    docker compose up --build
    ```
 
-   The React app is available at [http://localhost:5173](http://localhost:5173), the Express API at [http://localhost:3000](http://localhost:3000), and PostgreSQL on port `5432`. Express checks its database connection before listening; `/api/health` also verifies the connection.
+   The equivalent legacy command is `docker-compose up --build`. Wait for the database and API health checks to pass.
 
-   The recovery tracker loads readiness and workout history from the API, saves new entries, and supports inline edits without reloading the page.
+4. Open the app and check the API:
 
-   PostgreSQL automatically applies SQL files in `server/migrations` when initializing a new data volume. Existing volumes are preserved and do not rerun initialization scripts. Express starts only after PostgreSQL passes its health check.
+   - React client: [http://localhost:5173](http://localhost:5173)
+   - Express API health: [http://localhost:3000/api/health](http://localhost:3000/api/health)
+   - PostgreSQL: `localhost:5432`
 
-   Film notes are available at `POST` and `GET /api/film-notes`, `PUT /api/film-notes/:id`, and `DELETE /api/film-notes/:id`. The create/update JSON fields are `opponent`, `session_date` (`YYYY-MM-DD`), `session_type` (`Game` or `Practice`), `general_notes`, and `timestamps` (an array of `{ time, observation, correction }`). `GET` accepts optional `opponent` and `search` query parameters. These development routes use logical user ID `1`, mapped to the seeded UUID.
+   The expected health response is `{"status":"ok","database":"connected"}`. On a new PostgreSQL data volume, SQL migrations in `server/migrations` run automatically during database initialization.
 
-   For an existing database volume, apply the film-note migration once with `docker compose exec -T db psql -U gridiron -d gridiron -v ON_ERROR_STOP=1 -f /docker-entrypoint-initdb.d/002_add_film_note_sessions.sql` (adjust the user and database for your `.env`).
+5. Stop the services with `Ctrl+C`, or run:
 
-4. **Stop the stack:**
-   ```bash
+   ```sh
    docker compose down
    ```
 
-   PostgreSQL data is kept in a named volume. To remove it as well, run `docker compose down -v`.
+PostgreSQL data remains in the `postgres_data` named volume. To remove the database and all its data, use `docker compose down -v` only when you intend to reset the local database.
+
+### Existing database volume
+
+PostgreSQL only runs its initialization scripts when creating a new data directory. If reusing a volume created before the Unit 12 MVP migration, apply the new migration once from PowerShell:
+
+```powershell
+Get-Content .\server\migrations\002_unit12_mvp.sql | docker compose exec -T db psql -U gridiron -d gridiron
+```
+
+## Current API
+
+All endpoints are under `/api`. The local MVP uses the seeded demo athlete (`user_id` `00000000-0000-0000-0000-000000000001`); authentication is not part of this local setup.
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/health` | API and PostgreSQL health check. |
+| `POST` | `/api/readiness` | Create a readiness check-in. Body: `sleep_quality` (1-10), `fatigue_level` (1-10), `sore_muscles` (array of muscle-area names), and `notes`. |
+| `POST` | `/api/workouts` | Create a workout. Body: `type` (`Lifting` or `Mobility/Rehab`), `duration_mins`, `intensity` (1-10), and `notes`. |
+| `GET` | `/api/logs` | Readiness and workout history, each ordered newest first. |
+| `PUT` | `/api/logs/:type/:id` | Update a log; `:type` is `readiness` or `workout`. |
+| `POST` | `/api/film-notes` | Create a film note with opponent, session date/type, general notes, and timestamped plays. |
+| `GET` | `/api/film-notes` | List film notes; accepts optional `opponent` and `search` query parameters. |
+| `PUT` | `/api/film-notes/:id` | Update a film note and its timestamped plays. |
+| `DELETE` | `/api/film-notes/:id` | Delete a film note. |
+
+## Google Cloud deployment (Cloud Run + Cloud SQL)
+
+The cloud image serves the React build and Express API from one Cloud Run service. PostgreSQL runs in Cloud SQL, with the password supplied from Secret Manager. The Cloud Run service is private by default: this MVP has no sign-in and assumes one demo athlete, so do not make it public with real athlete data.
+
+### One-time Google Cloud setup
+
+1. Install and authenticate the Google Cloud CLI, select a billable project, and choose a region:
+
+   ```sh
+   gcloud auth login
+   gcloud config set project YOUR_PROJECT_ID
+   gcloud config set run/region us-central1
+   ```
+
+2. Enable the required services and create an Artifact Registry repository:
+
+   ```sh
+   gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com sqladmin.googleapis.com secretmanager.googleapis.com
+   gcloud artifacts repositories create gridironpulse --repository-format=docker --location=us-central1
+   ```
+
+3. In Cloud SQL, create a PostgreSQL instance, a database named `gridiron`, and a database user named `gridiron`. Keep the instance connection name (`PROJECT_ID:REGION:INSTANCE`) and the database user's password. Store that password as a Secret Manager secret named `gridiron-db-password`; do not put it in this repository or in build substitutions.
+
+4. Create a runtime service account and grant it access to Cloud SQL and the database password secret:
+
+   ```sh
+   gcloud iam service-accounts create gridironpulse-runtime
+   gcloud projects add-iam-policy-binding YOUR_PROJECT_ID --member="serviceAccount:gridironpulse-runtime@YOUR_PROJECT_ID.iam.gserviceaccount.com" --role=roles/cloudsql.client
+   gcloud secrets add-iam-policy-binding gridiron-db-password --member="serviceAccount:gridironpulse-runtime@YOUR_PROJECT_ID.iam.gserviceaccount.com" --role=roles/secretmanager.secretAccessor
+   ```
+
+   The identity running Cloud Build also needs permission to push to the Artifact Registry repository, deploy Cloud Run services, and act as this runtime service account.
+
+5. Apply the database migrations once to the Cloud SQL database. One option is to run the Cloud SQL Auth Proxy locally for your instance, then run `psql` against its local port:
+
+   ```sh
+   cloud-sql-proxy --port 5433 YOUR_PROJECT_ID:us-central1:YOUR_INSTANCE
+   ```
+
+   In another terminal, with `psql` installed:
+
+   ```sh
+   psql "host=127.0.0.1 port=5433 dbname=gridiron user=gridiron sslmode=disable" -f server/migrations/001_create_core_tables.sql
+   psql "host=127.0.0.1 port=5433 dbname=gridiron user=gridiron sslmode=disable" -f server/migrations/002_unit12_mvp.sql
+   ```
+
+   Enter the database user's password when prompted. If the schema already exists, apply only migrations that have not yet been applied.
+
+### Build and deploy
+
+Run this from the repository root, replacing the project, instance, and account values:
+
+```sh
+gcloud builds submit --config cloudbuild.yaml --substitutions="_REGION=us-central1,_REPOSITORY=gridironpulse,_SERVICE=gridironpulse,_INSTANCE_CONNECTION_NAME=YOUR_PROJECT_ID:us-central1:YOUR_INSTANCE,_DATABASE=gridiron,_DB_USER=gridiron,_DB_PASSWORD_SECRET=gridiron-db-password,_RUNTIME_SERVICE_ACCOUNT=gridironpulse-runtime@YOUR_PROJECT_ID.iam.gserviceaccount.com" .
+```
+
+The build produces a single container from `Dockerfile.cloud`, deploys it to Cloud Run, attaches the Cloud SQL socket, and injects `PGPASSWORD` from Secret Manager. Open the service privately through an authenticated local proxy:
+
+```sh
+gcloud run services add-iam-policy-binding gridironpulse --region us-central1 --member="user:YOUR_GOOGLE_ACCOUNT_EMAIL" --role=roles/run.invoker
+gcloud run services proxy gridironpulse --region us-central1 --port 8080
+```
+
+Then visit [http://localhost:8080](http://localhost:8080). Keep the service private until authentication and per-athlete data isolation are implemented.

@@ -7,6 +7,7 @@ RUN npm ci --omit=dev
 
 COPY routes ./routes
 COPY src ./src
+COPY routes ./routes
 
 EXPOSE 3000
 

@@ -1,186 +1,175 @@
 import { Router } from 'express'
+import pg from 'pg'
 
+const { Pool } = pg
+const pool = new Pool()
+const router = Router()
 const userId = '00000000-0000-0000-0000-000000000001'
-const workoutTypes = new Set(['lifting', 'mobility'])
-const uuidPattern =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const allowedSoreMuscles = new Set([
+  'Hamstrings',
+  'Quads',
+  'Calves',
+  'Shoulders',
+  'Lower Back',
+  'Hip Flexors',
+])
+const workoutTypes = new Map([
+  ['Lifting', 'lifting'],
+  ['Mobility/Rehab', 'mobility'],
+])
 
-function isObject(value) {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
+function isIntegerInRange(value, min, max) {
+  return Number.isInteger(value) && value >= min && value <= max
 }
 
 function validateReadiness(body) {
-  if (!isObject(body)) {
-    return 'Request body must be a JSON object.'
-  }
-  if (!Number.isInteger(body.sleep_quality) || body.sleep_quality < 1 || body.sleep_quality > 10) {
-    return 'sleep_quality must be an integer from 1 to 10.'
-  }
-  if (!Number.isInteger(body.fatigue_level) || body.fatigue_level < 1 || body.fatigue_level > 10) {
-    return 'fatigue_level must be an integer from 1 to 10.'
-  }
-  if (!Array.isArray(body.sore_muscles) || !body.sore_muscles.every((muscle) => typeof muscle === 'string')) {
-    return 'sore_muscles must be an array of strings.'
-  }
-  if (typeof body.notes !== 'string') {
-    return 'notes must be a string.'
-  }
-  return null
+  return (
+    body !== null &&
+    typeof body === 'object' &&
+    !Array.isArray(body) &&
+    isIntegerInRange(body.sleep_quality, 1, 10) &&
+    isIntegerInRange(body.fatigue_level, 1, 10) &&
+    Array.isArray(body.sore_muscles) &&
+    body.sore_muscles.every((muscle) => allowedSoreMuscles.has(muscle)) &&
+    typeof body.notes === 'string'
+  )
 }
 
 function validateWorkout(body) {
-  if (!isObject(body)) {
-    return 'Request body must be a JSON object.'
-  }
-  if (typeof body.type !== 'string' || !workoutTypes.has(body.type)) {
-    return 'type must be Lifting or Mobility/Rehab.'
-  }
-  if (!Number.isInteger(body.duration_mins) || body.duration_mins < 1) {
-    return 'duration_mins must be a positive integer.'
-  }
-  if (!Number.isInteger(body.intensity) || body.intensity < 1 || body.intensity > 10) {
-    return 'intensity must be an integer from 1 to 10.'
-  }
-  if (typeof body.notes !== 'string') {
-    return 'notes must be a string.'
-  }
-  return null
+  return (
+    body !== null &&
+    typeof body === 'object' &&
+    !Array.isArray(body) &&
+    workoutTypes.has(body.type) &&
+    isIntegerInRange(body.duration_mins, 1, 1440) &&
+    isIntegerInRange(body.intensity, 1, 10) &&
+    typeof body.notes === 'string'
+  )
 }
 
-export default function createRecoveryRouter(pool) {
-  const router = Router()
+router.post('/readiness', async (request, response, next) => {
+  if (!validateReadiness(request.body)) {
+    return response.status(400).json({
+      error: 'sleep_quality and fatigue_level must be 1-10, sore_muscles must contain known areas, and notes must be text.',
+    })
+  }
 
-  router.post('/readiness', async (request, response, next) => {
-    const validationError = validateReadiness(request.body)
-    if (validationError) {
-      return response.status(400).json({ error: validationError })
-    }
+  try {
+    const { sleep_quality, fatigue_level, sore_muscles, notes } = request.body
+    const { rows } = await pool.query(
+      `INSERT INTO readiness_logs
+        (user_id, sleep_quality, fatigue_level, sore_muscles, notes)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, logged_at, sleep_quality, fatigue_level, sore_muscles, notes`,
+      [userId, sleep_quality, fatigue_level, sore_muscles, notes.trim()],
+    )
+    return response.status(201).json(rows[0])
+  } catch (error) {
+    return next(error)
+  }
+})
 
-    try {
-      const { rows } = await pool.query(
-        `INSERT INTO readiness_logs
-          (user_id, sleep_quality, fatigue_level, sore_muscles, notes)
-         VALUES ($1, $2, $3, $4, $5)
-         RETURNING *`,
-        [
-          userId,
-          request.body.sleep_quality,
-          request.body.fatigue_level,
-          request.body.sore_muscles,
-          request.body.notes,
-        ],
-      )
-      return response.status(201).json(rows[0])
-    } catch (error) {
-      return next(error)
-    }
-  })
+router.post('/workouts', async (request, response, next) => {
+  if (!validateWorkout(request.body)) {
+    return response.status(400).json({
+      error: 'type must be Lifting or Mobility/Rehab, duration_mins must be positive, intensity must be 1-10, and notes must be text.',
+    })
+  }
 
-  router.post('/workouts', async (request, response, next) => {
-    const validationError = validateWorkout(request.body)
-    if (validationError) {
-      return response.status(400).json({ error: validationError })
-    }
+  try {
+    const { type, duration_mins, intensity, notes } = request.body
+    const { rows } = await pool.query(
+      `INSERT INTO workouts (user_id, workout_type, duration_minutes, intensity, notes)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, started_at, workout_type, duration_minutes, intensity, notes`,
+      [userId, workoutTypes.get(type), duration_mins, intensity, notes.trim()],
+    )
+    const workout = rows[0]
+    return response.status(201).json({
+      ...workout,
+      type,
+      duration_mins: workout.duration_minutes,
+    })
+  } catch (error) {
+    return next(error)
+  }
+})
 
-    try {
-      const { rows } = await pool.query(
-        `INSERT INTO workouts
-          (user_id, workout_type, duration_minutes, intensity, notes)
-         VALUES ($1, $2, $3, $4, $5)
-         RETURNING *`,
-        [
-          userId,
-          request.body.type,
-          request.body.duration_mins,
-          request.body.intensity,
-          request.body.notes,
-        ],
-      )
-      return response.status(201).json(rows[0])
-    } catch (error) {
-      return next(error)
-    }
-  })
+router.get('/logs', async (_request, response, next) => {
+  try {
+    const [readiness, workouts] = await Promise.all([
+      pool.query(
+        `SELECT id, logged_at, sleep_quality, fatigue_level, sore_muscles, notes
+         FROM readiness_logs WHERE user_id = $1 ORDER BY logged_at DESC`,
+        [userId],
+      ),
+      pool.query(
+        `SELECT id, started_at, workout_type, duration_minutes, intensity, notes
+         FROM workouts WHERE user_id = $1 ORDER BY started_at DESC`,
+        [userId],
+      ),
+    ])
+    return response.json({
+      readiness_logs: readiness.rows,
+      workouts: workouts.rows.map((workout) => ({
+        ...workout,
+        type: workout.workout_type === 'mobility' ? 'Mobility/Rehab' : 'Lifting',
+        duration_mins: workout.duration_minutes,
+      })),
+    })
+  } catch (error) {
+    return next(error)
+  }
+})
 
-  router.get('/logs', async (_request, response, next) => {
-    try {
-      const [readinessResult, workoutsResult] = await Promise.all([
-        pool.query(
-          'SELECT * FROM readiness_logs WHERE user_id = $1 ORDER BY logged_at DESC, id DESC',
-          [userId],
-        ),
-        pool.query(
-          'SELECT * FROM workouts WHERE user_id = $1 ORDER BY started_at DESC, id DESC',
-          [userId],
-        ),
-      ])
-      return response.json({
-        readiness_logs: readinessResult.rows,
-        workouts: workoutsResult.rows,
-      })
-    } catch (error) {
-      return next(error)
-    }
-  })
+router.put('/logs/:type/:id', async (request, response, next) => {
+  const { type, id } = request.params
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+    return response.status(400).json({ error: 'A valid log ID is required.' })
+  }
 
-  router.put('/logs/:type/:id', async (request, response, next) => {
-    const { type, id } = request.params
-    if (!uuidPattern.test(id)) {
-      return response.status(400).json({ error: 'id must be a UUID.' })
-    }
-
-    const isReadiness = type === 'readiness'
-    const isWorkout = type === 'workout'
-    if (!isReadiness && !isWorkout) {
-      return response.status(400).json({ error: 'type must be readiness or workout.' })
-    }
-
-    const validationError = isReadiness
-      ? validateReadiness(request.body)
-      : validateWorkout(request.body)
-    if (validationError) {
-      return response.status(400).json({ error: validationError })
-    }
-
-    try {
-      const result = isReadiness
-        ? await pool.query(
-            `UPDATE readiness_logs
-             SET sleep_quality = $1, fatigue_level = $2, sore_muscles = $3, notes = $4
-             WHERE id = $5 AND user_id = $6
-             RETURNING *`,
-            [
-              request.body.sleep_quality,
-              request.body.fatigue_level,
-              request.body.sore_muscles,
-              request.body.notes,
-              id,
-              userId,
-            ],
-          )
-        : await pool.query(
-            `UPDATE workouts
-             SET workout_type = $1, duration_minutes = $2, intensity = $3, notes = $4
-             WHERE id = $5 AND user_id = $6
-             RETURNING *`,
-            [
-              request.body.type,
-              request.body.duration_mins,
-              request.body.intensity,
-              request.body.notes,
-              id,
-              userId,
-            ],
-          )
-
-      if (result.rowCount === 0) {
-        return response.status(404).json({ error: 'Log entry not found.' })
+  try {
+    if (type === 'readiness') {
+      if (!validateReadiness(request.body)) {
+        return response.status(400).json({ error: 'Readiness values are invalid.' })
       }
-      return response.json(result.rows[0])
-    } catch (error) {
-      return next(error)
+      const { sleep_quality, fatigue_level, sore_muscles, notes } = request.body
+      const { rows } = await pool.query(
+        `UPDATE readiness_logs
+         SET sleep_quality = $1, fatigue_level = $2, sore_muscles = $3, notes = $4
+         WHERE id = $5 AND user_id = $6
+         RETURNING id, logged_at, sleep_quality, fatigue_level, sore_muscles, notes`,
+        [sleep_quality, fatigue_level, sore_muscles, notes.trim(), id, userId],
+      )
+      if (!rows.length) return response.status(404).json({ error: 'Readiness log not found.' })
+      return response.json(rows[0])
     }
-  })
 
-  return router
-}
+    if (type === 'workout') {
+      if (!validateWorkout(request.body)) {
+        return response.status(400).json({ error: 'Workout values are invalid.' })
+      }
+      const { type: workoutType, duration_mins, intensity, notes } = request.body
+      const { rows } = await pool.query(
+        `UPDATE workouts
+         SET workout_type = $1, duration_minutes = $2, intensity = $3, notes = $4
+         WHERE id = $5 AND user_id = $6
+         RETURNING id, started_at, workout_type, duration_minutes, intensity, notes`,
+        [workoutTypes.get(workoutType), duration_mins, intensity, notes.trim(), id, userId],
+      )
+      if (!rows.length) return response.status(404).json({ error: 'Workout not found.' })
+      const workout = rows[0]
+      return response.json({
+        ...workout,
+        type: workoutType,
+        duration_mins: workout.duration_minutes,
+      })
+    }
+
+    return response.status(400).json({ error: 'type must be readiness or workout.' })
+  } catch (error) {
+    return next(error)
+  }
+})
+
+export default router
