@@ -60,14 +60,9 @@ Football players currently juggle scattered spiral notebooks, generic fitness tr
 
    The React app is available at [http://localhost:5173](http://localhost:5173), the Express API at [http://localhost:3000](http://localhost:3000), and PostgreSQL on port `5432`. Express checks its database connection before listening; `/api/health` also verifies the connection.
 
-4. **Apply the database migration** (using values from `.env`):
-   ```bash
-   docker compose exec -T db psql -U gridiron -d gridiron -v ON_ERROR_STOP=1 -f /migrations/001_create_core_tables.sql
-   ```
+   PostgreSQL automatically applies SQL files in `server/migrations` when initializing a new data volume. Existing volumes are preserved and do not rerun initialization scripts. Express starts only after PostgreSQL passes its health check.
 
-   Replace the `-U` user and `-d` database values if you changed them in `.env`.
-
-5. **Stop the stack:**
+4. **Stop the stack:**
    ```bash
    docker compose down
    ```
