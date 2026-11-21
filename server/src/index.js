@@ -1,10 +1,15 @@
 import express from 'express'
 import pg from 'pg'
+import createRecoveryRouter from '../routes/recovery.js'
 
 const { Pool } = pg
 const app = express()
 const port = Number(process.env.PORT ?? 3000)
 const pool = new Pool({ connectionTimeoutMillis: 5000 })
+
+app.use(express.json())
+
+app.use('/api', createRecoveryRouter(pool))
 
 app.get('/api/health', async (_request, response, next) => {
   try {
@@ -17,7 +22,11 @@ app.get('/api/health', async (_request, response, next) => {
 
 app.use((error, _request, response, _next) => {
   console.error(error)
-  response.status(500).json({ error: 'Internal server error' })
+  const status =
+    Number.isInteger(error.status) && error.status >= 400 && error.status < 500 ? 400 : 500
+  response.status(status).json({
+    error: status === 400 ? 'Invalid request body.' : 'Internal server error',
+  })
 })
 
 async function startServer() {
