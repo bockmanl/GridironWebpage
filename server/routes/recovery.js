@@ -11,9 +11,14 @@ const allowedSoreMuscles = new Set([
   'Hip Flexors',
 ])
 const workoutTypes = new Map([
-  ['Lifting', 'lifting'],
-  ['Mobility/Rehab', 'mobility'],
+  ['lifting', 'lifting'],
+  ['mobility', 'mobility'],
+  ['mobility/rehab', 'mobility'],
 ])
+
+function normalizeWorkoutType(value) {
+  return typeof value === 'string' ? workoutTypes.get(value.toLowerCase()) : undefined
+}
 
 function isIntegerInRange(value, min, max) {
   return Number.isInteger(value) && value >= min && value <= max
@@ -37,7 +42,7 @@ function validateWorkout(body) {
     body !== null &&
     typeof body === 'object' &&
     !Array.isArray(body) &&
-    workoutTypes.has(body.type) &&
+    Boolean(normalizeWorkoutType(body.type)) &&
     isIntegerInRange(body.duration_mins, 1, 1440) &&
     isIntegerInRange(body.intensity, 1, 10) &&
     typeof body.notes === 'string'
@@ -79,7 +84,7 @@ router.post('/workouts', async (request, response, next) => {
       `INSERT INTO workouts (user_id, workout_type, duration_minutes, intensity, notes)
        VALUES ($1, $2, $3, $4, $5)
        RETURNING id, started_at, workout_type, duration_minutes, intensity, notes`,
-      [userId, workoutTypes.get(type), duration_mins, intensity, notes.trim()],
+      [userId, normalizeWorkoutType(type), duration_mins, intensity, notes.trim()],
     )
     const workout = rows[0]
     return response.status(201).json({
@@ -152,7 +157,7 @@ router.put('/logs/:type/:id', async (request, response, next) => {
          SET workout_type = $1, duration_minutes = $2, intensity = $3, notes = $4
          WHERE id = $5 AND user_id = $6
          RETURNING id, started_at, workout_type, duration_minutes, intensity, notes`,
-        [workoutTypes.get(workoutType), duration_mins, intensity, notes.trim(), id, userId],
+        [normalizeWorkoutType(workoutType), duration_mins, intensity, notes.trim(), id, userId],
       )
       if (!rows.length) return response.status(404).json({ error: 'Workout not found.' })
       const workout = rows[0]
