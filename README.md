@@ -60,6 +60,8 @@ Football players currently juggle scattered spiral notebooks, generic fitness tr
 
    The React app is available at [http://localhost:5173](http://localhost:5173), the Express API at [http://localhost:3000](http://localhost:3000), and PostgreSQL on port `5432`. Express checks its database connection before listening; `/api/health` also verifies the connection.
 
+   The recovery tracker loads readiness and workout history from the API, saves new entries, and supports inline edits without reloading the page.
+
    PostgreSQL automatically applies SQL files in `server/migrations` when initializing a new data volume. Existing volumes are preserved and do not rerun initialization scripts. Express starts only after PostgreSQL passes its health check.
 
 4. **Stop the stack:**
