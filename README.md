@@ -1,25 +1,29 @@
 # GridironPulse
 
-GridironPulse is a unified football recovery and film study tracker. It gives student-athletes one place to record daily readiness and soreness, log workouts and mobility sessions, and organize opponent film notes with play-by-play timestamps.
+GridironPulse is a unified football recovery, workout, and film study tracker. It gives student-athletes one place to record daily readiness and soreness, log workouts and mobility sessions, and organize opponent film notes with play-by-play timestamps.
 
-## Why it matters
+## Project overview and Sprint 1 status
 
-Players and coaches often split preparation across paper notebooks, spreadsheets, and separate tracking tools. That fragmentation makes it harder to keep training and film observations together. GridironPulse brings those records into one simple, searchable workflow so athletes can review their recovery and football study history side by side.
+Student-athletes often split their preparation across paper notebooks, spreadsheets, and separate tracking tools. That fragmentation makes it harder to connect recovery habits, training sessions, and film observations. GridironPulse brings those workflows together in one searchable application.
 
-## MVP features
+**Sprint 1 MVP is implemented.** The current repository includes:
 
-- Daily readiness check-ins for sleep quality, fatigue, sore muscles, and notes.
-- Workout and mobility/rehab logging with duration and intensity.
-- Recent recovery and workout history with inline editing.
-- Film notes by opponent, date, and session type, with searchable notes and timestamped observations and coaching corrections.
+- **Recovery Tracker:** daily sleep, fatigue, soreness, and notes check-ins; workout and mobility logging; and editable recent history.
+- **Film Notebook:** create, search/filter, edit, and delete notes with timestamped observations and coaching corrections.
+- **PostgreSQL auto-migrations:** the Express server applies ordered, unrecorded SQL migrations before accepting requests.
+- **Google Cloud deployment configuration:** Cloud Build can build the production image, push it to Artifact Registry, and deploy a private Cloud Run service connected to Cloud SQL, with the database password from Secret Manager.
 
-## Technology stack
+The Cloud Build delivery workflow is defined in `cloudbuild.yaml` and can be run with `gcloud builds submit`. A Git push trigger is configured separately in Google Cloud, if desired; it is not defined in this repository. No live service URL is checked in, so verify the deployed service and its status in the target Google Cloud project.
 
-- **Frontend:** React and TypeScript, served by Vite.
+## Architecture and technology stack
+
+- **Frontend:** React, Vite, and TypeScript.
 - **API:** Node.js and Express.
 - **Database:** PostgreSQL.
-- **Local development:** Docker Compose.
-- **Cloud hosting direction:** Google Cloud (container hosting and managed PostgreSQL are the intended deployment approach). The repository currently configures local Docker Compose; Google Cloud resources are not provisioned here.
+- **Local environment:** Docker Compose runs the client, API, and database.
+- **Cloud environment:** Cloud Run hosts the production client/API container; Cloud SQL provides PostgreSQL; Artifact Registry stores the container image; Secret Manager supplies the database password; Cloud Build builds, pushes, and deploys the image.
+
+The local Vite development server proxies API requests to Express. In production, the Express container serves the built React application and `/api` endpoints from the same Cloud Run service.
 
 ## Run locally
 
@@ -49,55 +53,48 @@ Players and coaches often split preparation across paper notebooks, spreadsheets
    cp .env.example .env
    ```
 
-   The example contains development-only PostgreSQL defaults. Change them in `.env` if needed; do not use these defaults for a shared or production environment.
+   `.env.example` contains development-only PostgreSQL defaults. Change them in `.env` if needed; never use these defaults for a shared or production environment.
 
 3. Build and start the services:
 
    ```sh
-   docker compose up --build
+   docker-compose up --build
    ```
 
-   The equivalent legacy command is `docker-compose up --build`. Wait for the database and API health checks to pass.
+   With current Docker Compose installations, `docker compose up --build` is equivalent. Wait for the database and API health checks to pass. On server startup, the migration runner creates its tracking table, then applies each unapplied SQL migration in sorted order and records it. No manual SQL setup is required.
 
 4. Open the app and check the API:
 
    - React client: [http://localhost:5173](http://localhost:5173)
-   - Express API health: [http://localhost:3000/api/health](http://localhost:3000/api/health)
+   - Express health check: [http://localhost:3000/api/health](http://localhost:3000/api/health)
    - PostgreSQL: `localhost:5432`
 
-   The expected health response is `{"status":"ok","database":"connected"}`. PostgreSQL runs the migration scripts on a new data volume, and Express tracks/applies any unrecorded migrations in sorted order before it starts accepting traffic. This also handles an existing volume and Cloud SQL.
+   A healthy API returns `{"status":"ok","database":"connected"}`.
 
 5. Stop the services with `Ctrl+C`, or run:
 
    ```sh
-   docker compose down
+   docker-compose down
    ```
 
-PostgreSQL data remains in the `postgres_data` named volume. To remove the database and all its data, use `docker compose down -v` only when you intend to reset the local database.
+PostgreSQL data remains in the `postgres_data` named volume. To reset the local database and remove all its data, run `docker-compose down -v` only when that is intended.
 
-## Current API
+### Environment variables
 
-All endpoints are under `/api`. The local MVP uses the seeded demo athlete (`user_id` `00000000-0000-0000-0000-000000000001`); authentication is not part of this local setup.
-
-| Method | Endpoint | Purpose |
+| Environment | Variables | Purpose |
 | --- | --- | --- |
-| `GET` | `/api/health` | API and PostgreSQL health check. |
-| `POST` | `/api/readiness` | Create a readiness check-in. Body: `sleep_quality` (1-10), `fatigue_level` (1-10), `sore_muscles` (array of muscle-area names), and `notes`. |
-| `POST` | `/api/workouts` | Create a workout. Body: `type` (`Lifting` or `Mobility/Rehab`), `duration_mins`, `intensity` (1-10), and `notes`. |
-| `GET` | `/api/logs` | Readiness and workout history, each ordered newest first. |
-| `PUT` | `/api/logs/:type/:id` | Update a log; `:type` is `readiness` or `workout`. |
-| `POST` | `/api/film-notes` | Create a film note with opponent, session date/type, general notes, and timestamped plays. |
-| `GET` | `/api/film-notes` | List film notes; accepts optional `opponent` and `search` query parameters. |
-| `PUT` | `/api/film-notes/:id` | Update a film note and its timestamped plays. |
-| `DELETE` | `/api/film-notes/:id` | Delete a film note. |
+| Local `.env` | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | Configure the PostgreSQL container. Compose passes these values to the server as `PGDATABASE`, `PGUSER`, and `PGPASSWORD`; the server connects to the `db` service on port `5432`. |
+| Local client | `API_PROXY_TARGET` | Compose sets this to `http://server:3000` for Vite's API proxy. |
+| Cloud Run | `NODE_ENV=production`, `PORT=8080`, `PGHOST`, `PGPORT=5432`, `PGDATABASE`, `PGUSER` | Configure the production Express process and its Cloud SQL Unix socket connection. `PGHOST` is `/cloudsql/PROJECT_ID:REGION:INSTANCE`. |
+| Cloud Run secret | `PGPASSWORD` | Injected from the `gridiron-db-password` Secret Manager secret; do not put database credentials in source control or build arguments. |
 
-## Google Cloud deployment (Cloud Run + Cloud SQL)
+### Google Cloud deployment
 
-The cloud image serves the React build and Express API from one Cloud Run service. PostgreSQL runs in Cloud SQL, with the password supplied from Secret Manager. The Cloud Run service is private by default: this MVP has no sign-in and assumes one demo athlete, so do not make it public with real athlete data.
+The checked-in Cloud Build configuration performs the delivery sequence **build image → push to Artifact Registry → deploy to Cloud Run**. The Cloud Run service is private by default because this MVP has no authentication or per-athlete data isolation. Do not expose real athlete data through a public service.
 
-### One-time Google Cloud setup
+One-time setup in the target Google Cloud project:
 
-1. Install and authenticate the Google Cloud CLI, select a billable project, and choose a region:
+1. Install and authenticate the Google Cloud CLI, select the billable project, and choose a region:
 
    ```sh
    gcloud auth login
@@ -105,16 +102,16 @@ The cloud image serves the React build and Express API from one Cloud Run servic
    gcloud config set run/region us-central1
    ```
 
-2. Enable the required services and create an Artifact Registry repository:
+2. Enable the required services and create the Artifact Registry repository:
 
    ```sh
    gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com sqladmin.googleapis.com secretmanager.googleapis.com
    gcloud artifacts repositories create gridironpulse --repository-format=docker --location=us-central1
    ```
 
-3. In Cloud SQL, create a PostgreSQL instance, a database named `gridiron`, and a database user named `gridiron`. Ensure this user can create tables in the `public` schema; the app applies migrations during startup. Keep the instance connection name (`PROJECT_ID:REGION:INSTANCE`) and the database user's password. Store that password as a Secret Manager secret named `gridiron-db-password`; do not put it in this repository or in build substitutions.
+3. Create a Cloud SQL PostgreSQL instance, a database named `gridiron`, and a database user named `gridiron`. The user must be allowed to create/alter tables in the `public` schema so startup migrations can run. Record the instance connection name (`PROJECT_ID:REGION:INSTANCE`).
 
-4. Create a runtime service account and grant it access to Cloud SQL and the database password secret:
+4. Create the Cloud Run runtime service account, grant it Cloud SQL access, and store the database user's password in Secret Manager as `gridiron-db-password`:
 
    ```sh
    gcloud iam service-accounts create gridironpulse-runtime
@@ -122,23 +119,54 @@ The cloud image serves the React build and Express API from one Cloud Run servic
    gcloud secrets add-iam-policy-binding gridiron-db-password --member="serviceAccount:gridironpulse-runtime@YOUR_PROJECT_ID.iam.gserviceaccount.com" --role=roles/secretmanager.secretAccessor
    ```
 
-   The identity running Cloud Build also needs permission to push to the Artifact Registry repository, deploy Cloud Run services, and act as this runtime service account.
+   Create the secret and add its password value in Secret Manager before deploying. The Cloud Build identity also needs permission to push images, deploy Cloud Run, and act as the runtime service account.
 
-5. The server image includes `server/migrations`. On startup, it applies each unrecorded SQL file in sorted order and records it in `schema_migrations`; no manual migration command is required.
+5. Submit the build and deploy from the repository root, replacing the project, instance, and account values:
 
-### Build and deploy
+   ```sh
+   gcloud builds submit --config cloudbuild.yaml --substitutions="_REGION=us-central1,_REPOSITORY=gridironpulse,_SERVICE=gridironpulse,_INSTANCE_CONNECTION_NAME=YOUR_PROJECT_ID:us-central1:YOUR_INSTANCE,_DATABASE=gridiron,_DB_USER=gridiron,_DB_PASSWORD_SECRET=gridiron-db-password,_RUNTIME_SERVICE_ACCOUNT=gridironpulse-runtime@YOUR_PROJECT_ID.iam.gserviceaccount.com" .
+   ```
 
-Run this from the repository root, replacing the project, instance, and account values:
+   The build uses `Dockerfile.cloud`, pushes the image to Artifact Registry, attaches the Cloud SQL instance to Cloud Run, sets the PostgreSQL connection variables, and injects `PGPASSWORD` from Secret Manager. The server applies database migrations before listening for requests.
 
-```sh
-gcloud builds submit --config cloudbuild.yaml --substitutions="_REGION=us-central1,_REPOSITORY=gridironpulse,_SERVICE=gridironpulse,_INSTANCE_CONNECTION_NAME=YOUR_PROJECT_ID:us-central1:YOUR_INSTANCE,_DATABASE=gridiron,_DB_USER=gridiron,_DB_PASSWORD_SECRET=gridiron-db-password,_RUNTIME_SERVICE_ACCOUNT=gridironpulse-runtime@YOUR_PROJECT_ID.iam.gserviceaccount.com" .
+6. To allow a specific Google identity to invoke the private service and access it locally:
+
+   ```sh
+   gcloud run services add-iam-policy-binding gridironpulse --region us-central1 --member="user:YOUR_GOOGLE_ACCOUNT_EMAIL" --role=roles/run.invoker
+   gcloud run services proxy gridironpulse --region us-central1 --port 8080
+   ```
+
+   Then visit [http://localhost:8080](http://localhost:8080). For automatic deployments on repository pushes, configure a Cloud Build trigger for this repository in Google Cloud and select `cloudbuild.yaml`; trigger configuration and live service details are project-side, not stored here.
+
+## API reference
+
+All routes are under `/api`. The MVP currently uses a seeded demo athlete; authentication and multi-user isolation are not implemented.
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/health` | Checks API/database connectivity. |
+| `POST` | `/api/readiness` | Creates a readiness check-in. Body: `sleep_quality` and `fatigue_level` (1–10), `sore_muscles` (array), and `notes`. |
+| `POST` | `/api/workouts` | Creates a workout. Body: `type` (`Lifting` or `Mobility/Rehab`), `duration_mins`, `intensity` (1–10), and `notes`. |
+| `GET` | `/api/logs` | Returns readiness and workout history, each ordered newest first. |
+| `PUT` | `/api/logs/:type/:id` | Updates an existing log; `:type` is `readiness` or `workout`. |
+| `POST` | `/api/film-notes` | Creates a film note with opponent, session date/type (`Game` or `Practice`), general notes, and a `timestamps` array of `{ time, observation, correction }`. |
+| `GET` | `/api/film-notes` | Lists notes ordered by session date descending. Optional `opponent` filters by opponent; optional `search` searches opponent and general notes. Both can be provided together. |
+| `PUT` | `/api/film-notes/:id` | Updates a film note and its timestamped plays. |
+| `DELETE` | `/api/film-notes/:id` | Deletes a film note. |
+
+Example filtered request:
+
+```text
+GET /api/film-notes?opponent=Eagles&search=coverage
 ```
 
-The build produces a single container from `Dockerfile.cloud`, deploys it to Cloud Run, attaches the Cloud SQL socket, and injects `PGPASSWORD` from Secret Manager. Open the service privately through an authenticated local proxy:
+## AI tool usage and development workflow
 
-```sh
-gcloud run services add-iam-policy-binding gridironpulse --region us-central1 --member="user:YOUR_GOOGLE_ACCOUNT_EMAIL" --role=roles/run.invoker
-gcloud run services proxy gridironpulse --region us-central1 --port 8080
-```
+AI tools supported development, with people responsible for requirements, review, and acceptance:
 
-Then visit [http://localhost:8080](http://localhost:8080). Keep the service private until authentication and per-athlete data isolation are implemented.
+- **Gemini** assisted with architecture exploration, Sprint planning, SQL schema/migration and CI debugging, and code-review feedback.
+- **GithubCopilot** assisted with React component scaffolding, refactoring, and development verification.
+- **Human verification checkpoints** included checking generated changes against the feature requirements; building and linting the client; starting the stack with Docker Compose; checking API/database health; exercising recovery, workout, and film-note workflows; and testing automatic migrations against a fresh database volume. Test records were removed after verification.
+- **Deployment checkpoint:** review Cloud Build substitutions, IAM permissions, Secret Manager usage, Cloud SQL connectivity, and private-by-default access in the target project before deploying. A successful local build or checked-in Cloud Build configuration alone does not establish that a live Cloud Run deployment is healthy.
+
+AI output is treated as a draft: review code, commands, SQL changes, and security-sensitive configuration before merging or deploying.
