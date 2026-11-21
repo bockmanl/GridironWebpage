@@ -53,7 +53,12 @@ Football players currently juggle scattered spiral notebooks, generic fitness tr
 
    The React app is available at [http://localhost:5173](http://localhost:5173), the Express API at [http://localhost:3000](http://localhost:3000), and PostgreSQL on port `5432`. The API health check at `/api/health` also verifies its database connection. By default, the local database is `gridiron` with username and password `gridiron`; set `POSTGRES_DB`, `POSTGRES_USER`, or `POSTGRES_PASSWORD` in your environment to override these development defaults.
 
-3. **Stop the stack:**
+3. **Apply the database migration** (using the default local database credentials):
+   ```bash
+   docker compose exec -T db psql -U gridiron -d gridiron -v ON_ERROR_STOP=1 -f /migrations/001_create_core_tables.sql
+   ```
+
+4. **Stop the stack:**
    ```bash
    docker compose down
    ```
